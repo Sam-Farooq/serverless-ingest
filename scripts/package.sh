@@ -32,13 +32,21 @@ cp -R src/handlers src/ingest "$BUILD_DIR/"
 # Only the caches. --no-compile should mean there are none, and a stray one
 # from a rebuild is worth removing anyway.
 #
-# The dist-info directories stay. Deleting them was measured at 1 MB out of 49
-# and it breaks any dependency that reads its own version through
-# importlib.metadata at import time, which fails nowhere except in the
-# runtime. One megabyte is not worth a failure mode that cannot be reproduced
-# on the machine that built the zip.
+# The dist-info directories stay. Deleting them saves 0.7 MiB of the 42 and it
+# breaks any dependency that reads its own version through importlib.metadata
+# at import time, which fails nowhere except in the runtime. Under a megabyte
+# is not worth a failure mode that cannot be reproduced on the machine that
+# built the zip.
 find "$BUILD_DIR" -type d -name "__pycache__" -prune -exec rm -rf {} +
 
 ( cd "$BUILD_DIR" && zip -qr "../../$ZIP_PATH" . )
 
-echo "$ZIP_PATH  $(du -h "$ZIP_PATH" | cut -f1)  unzipped $(du -sh "$BUILD_DIR" | cut -f1)"
+# Sizes are the sum of file sizes, because that is what Lambda's 250 MB
+# unzipped limit counts. du answers in 4 KiB disk blocks instead, and this tree
+# is thousands of small botocore JSON files, so du overstates it by about 7 MiB
+# and does not even agree with itself: 48M from -sh, 49 from -sm.
+content_mib() {
+  find "$1" -type f -exec cat {} + | wc -c | awk '{printf "%.0f", $1 / 1048576}'
+}
+
+echo "$ZIP_PATH  $(content_mib "$ZIP_PATH") MiB zipped  $(content_mib "$BUILD_DIR") MiB unzipped"

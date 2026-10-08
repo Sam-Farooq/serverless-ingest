@@ -227,29 +227,40 @@ credentials.
 ```bash
 ./scripts/package.sh
 cd infra
-cp terraform.tfvars.example terraform.tfvars   # then fill in the four values
+cp terraform.tfvars.example terraform.tfvars   # then fill in the three values
 terraform plan
 ```
 
-Four variables have no default, because none of them has a safe one:
-`subnet_ids`, `security_group_ids`, `database_url` and the account the bucket
-name is built from. `plan` needs AWS credentials; `validate` above does not.
+Three variables have no default, because none of them has a safe one:
+`database_url`, `subnet_ids` and `security_group_ids`. The bucket name carries
+the account id as well, and that is read from `aws_caller_identity` rather than
+supplied by hand. `plan` needs AWS credentials; `validate` above does not.
 
 `package.sh` fetches wheels for `manylinux2014_aarch64` rather than for the
 machine running it. psycopg and pydantic-core are compiled, so a zip built
 from a developer's own site-packages installs a macOS wheel into an arm64
 Linux runtime and fails at import with an error that names neither.
 
-The result is 23 MB zipped and 49 MB unzipped, against a 250 MB unzipped
-limit. botocore is 25 of those 49, and the Python 3.11 runtime already
-provides it. **What bundling it gives up is 25 MB of package size,** in
-exchange for the version being pinned by the zip rather than changed
-underneath the function by a runtime update.
+The result is 23 MiB zipped and 42 MiB of unzipped content, against a 250 MB
+unzipped limit. `package.sh` prints both figures at the end of a build, summing
+file sizes rather than calling `du`. The difference matters here: the tree is
+mostly thousands of small botocore JSON files, so a 4 KiB block count reads
+48M under `du -sh` and 49 under `du -sm` for the same 42 MiB of content, and
+the limit counts content.
+
+botocore is 19 MiB of the 42, and the Python 3.11 runtime already provides it.
+**What bundling it gives up is 19 MiB of package size,** in exchange for the
+version being pinned by the zip rather than changed underneath the function by
+a runtime update.
+
+The runtime dependencies are floors rather than pins, so a build next month
+resolves newer wheels and these numbers move. The script's own output is the
+current answer; the ones above are what it printed when this was written.
 
 The script deletes nothing except `__pycache__`. Stripping the `dist-info`
-directories was measured at 1 MB of the 49 and it breaks any dependency that
-reads its own version through `importlib.metadata`, which fails nowhere except
-in the runtime.
+directories saves 0.7 MiB of the 42 and it breaks any dependency that reads its
+own version through `importlib.metadata`, which fails nowhere except in the
+runtime.
 
 `database_url` is marked `sensitive` and has no default. It comes from Secrets
 Manager; a `.tfvars` file holding it is gitignored and is not how it should be
