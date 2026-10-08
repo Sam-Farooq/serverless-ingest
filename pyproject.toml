@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "serverless-ingest"
+version = "0.4.0"
+description = "S3 to SQS to Lambda to RDS Postgres, with partial batch failure and idempotent loads"
+requires-python = ">=3.11"
+dependencies = [
+    "boto3>=1.35.0",
+    "psycopg[binary]>=3.2.0",
+    "pydantic>=2.8.0",
+    "pydantic-settings>=2.4.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.1.1",
+    "ruff==0.16.10",
+    "moto[s3,sqs]==5.2.3",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+packages = ["ingest", "handlers"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["error::DeprecationWarning"]
