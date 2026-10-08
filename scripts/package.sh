@@ -29,11 +29,15 @@ python3.11 -m pip install \
 
 cp -R src/handlers src/ingest "$BUILD_DIR/"
 
-# Tests, caches and dist-info metadata are not needed at runtime and are a
-# third of the unzipped size.
+# Only the caches. --no-compile should mean there are none, and a stray one
+# from a rebuild is worth removing anyway.
+#
+# The dist-info directories stay. Deleting them was measured at 1 MB out of 49
+# and it breaks any dependency that reads its own version through
+# importlib.metadata at import time, which fails nowhere except in the
+# runtime. One megabyte is not worth a failure mode that cannot be reproduced
+# on the machine that built the zip.
 find "$BUILD_DIR" -type d -name "__pycache__" -prune -exec rm -rf {} +
-find "$BUILD_DIR" -type d -name "*.dist-info" -prune -exec rm -rf {} +
-find "$BUILD_DIR" -type d -name "tests" -prune -exec rm -rf {} +
 
 ( cd "$BUILD_DIR" && zip -qr "../../$ZIP_PATH" . )
 

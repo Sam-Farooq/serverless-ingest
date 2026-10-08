@@ -6,15 +6,15 @@ for the things that trigger them.
 
 ```
   upload ──► s3://<bucket>/raw/ ──► ingest-objects ──► load ──► Postgres
-                    │                   (sqs)            │        ├── readings
-              notification                               │        ├── rejected_rows
-                                                 5 failures        └── ingest_objects
-                                                          ▼              (the ledger)
-                                               ingest-objects-dlq
-                                                          │
-                                           replay ────────┘   invoked by a person
+                                         (sqs)                    readings
+                                           │                      rejected_rows
+                 after 5 failed deliveries                        ingest_objects
+                                           ▼
+                                  ingest-objects-dlq
+                                           │
+                                           └──► replay, invoked by a person
 
-  reconcile   list the bucket, read the ledger, report the difference, daily
+  reconcile, daily: list the bucket, read the ledger, report the difference
 ```
 
 ## The handlers
@@ -240,10 +240,16 @@ machine running it. psycopg and pydantic-core are compiled, so a zip built
 from a developer's own site-packages installs a macOS wheel into an arm64
 Linux runtime and fails at import with an error that names neither.
 
-The result is 23 MB zipped and 48 MB unzipped. botocore is 25 of those 48,
-and the Python 3.11 runtime already provides it. **What bundling it gives up
-is 25 MB of package size,** in exchange for the version being pinned by the
-zip rather than changed underneath the function by a runtime update.
+The result is 23 MB zipped and 49 MB unzipped, against a 250 MB unzipped
+limit. botocore is 25 of those 49, and the Python 3.11 runtime already
+provides it. **What bundling it gives up is 25 MB of package size,** in
+exchange for the version being pinned by the zip rather than changed
+underneath the function by a runtime update.
+
+The script deletes nothing except `__pycache__`. Stripping the `dist-info`
+directories was measured at 1 MB of the 49 and it breaks any dependency that
+reads its own version through `importlib.metadata`, which fails nowhere except
+in the runtime.
 
 `database_url` is marked `sensitive` and has no default. It comes from Secrets
 Manager; a `.tfvars` file holding it is gitignored and is not how it should be
