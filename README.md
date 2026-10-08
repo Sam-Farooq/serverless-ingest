@@ -46,9 +46,9 @@ dead letter queue and only one of them belonged there.
 or whose object has been deleted, fails the same way on every attempt. It is
 counted, logged and dropped instead. `src/ingest/errors.py` holds the one
 distinction the handlers need, and `src/ingest/s3source.py` decides which S3
-error codes fall on which side of it: `NoSuchKey`, `NoSuchBucket` and
-`AccessDenied` are permanent, and everything else including `SlowDown` is
-worth another delivery.
+error codes fall on which side of it: `NoSuchKey`, `NoSuchBucket`,
+`AccessDenied` and a bare `404` are permanent, and everything else including
+`SlowDown` is worth another delivery.
 
 A third shape is worth knowing because it is silent: an `itemIdentifier` that
 is empty, or that was not one of the ids SQS sent, makes AWS treat the whole
