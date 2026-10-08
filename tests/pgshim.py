@@ -1,4 +1,4 @@
-"""Run the production SQL against sqlite, so the tests need no Postgres.
+"""Run the real SQL against sqlite, so the tests need no Postgres.
 
 What this buys: the statements in ``ingest.repository`` are the statements the
 tests execute. The conflict clauses, the primary keys and the transaction

@@ -1,6 +1,6 @@
 """A guard on the sqlite shim, not on the schema.
 
-The tests run production SQL against a translated copy of sql/001_schema.sql.
+The tests run the real SQL against a translated copy of sql/001_schema.sql.
 If a column is added to Postgres using a type the translation does not know,
 every other test keeps passing against a table that no longer matches. These
 two fail instead.

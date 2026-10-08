@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "serverless-ingest"
-version = "0.4.0"
+version = "0.7.4"
 description = "S3 to SQS to Lambda to RDS Postgres, with partial batch failure and idempotent loads"
 requires-python = ">=3.11"
 dependencies = [
