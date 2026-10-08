@@ -101,8 +101,8 @@ class ShimConnection:
 
 
 def _register_adapters() -> None:
-    # sqlite3's built-in datetime adapter is deprecated, so the shim declares
-    # its own rather than inheriting a warning that becomes an error later.
+    # sqlite3's built-in datetime adapter is deprecated and scheduled for
+    # removal, so the shim declares its own rather than depending on it.
     sqlite3.register_adapter(datetime, lambda value: value.isoformat())
 
 
