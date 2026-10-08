@@ -40,9 +40,7 @@ def ndjson(event_id: str) -> bytes:
 def aws():
     with mock_aws():
         s3 = boto3.client("s3", region_name=REGION)
-        s3.create_bucket(
-            Bucket=BUCKET, CreateBucketConfiguration={"LocationConstraint": REGION}
-        )
+        s3.create_bucket(Bucket=BUCKET, CreateBucketConfiguration={"LocationConstraint": REGION})
         yield s3
 
 
@@ -103,14 +101,13 @@ def test_every_message_failing_reports_every_id_in_order(aws, db, monkeypatch):
 
 
 def test_a_permanent_failure_is_not_reported_as_a_batch_item_failure(aws, db):
+    present = aws.put_object(Bucket=BUCKET, Key="raw/present.ndjson", Body=ndjson("e-7"))
     event = sqs_event(
         object_message(BUCKET, "raw/missing.ndjson", "abc", message_id="m-1"),
         object_message(
             BUCKET,
             "raw/present.ndjson",
-            aws.put_object(
-                Bucket=BUCKET, Key="raw/present.ndjson", Body=ndjson("e-7")
-            )["ETag"].strip('"'),
+            present["ETag"].strip('"'),
             message_id="m-2",
         ),
     )

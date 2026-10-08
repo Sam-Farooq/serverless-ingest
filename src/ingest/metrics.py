@@ -56,9 +56,7 @@ class MetricBatch:
                     {
                         "Namespace": namespace,
                         "Dimensions": [list(self.dimensions)] if self.dimensions else [[]],
-                        "Metrics": [
-                            {"Name": name, "Unit": self.units[name]} for name in names
-                        ],
+                        "Metrics": [{"Name": name, "Unit": self.units[name]} for name in names],
                     }
                 ],
             }

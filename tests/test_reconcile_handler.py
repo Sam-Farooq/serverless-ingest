@@ -35,9 +35,7 @@ def ndjson(event_id: str) -> bytes:
 def aws(monkeypatch):
     with mock_aws():
         s3 = boto3.client("s3", region_name=REGION)
-        s3.create_bucket(
-            Bucket=BUCKET, CreateBucketConfiguration={"LocationConstraint": REGION}
-        )
+        s3.create_bucket(Bucket=BUCKET, CreateBucketConfiguration={"LocationConstraint": REGION})
         monkeypatch.setenv("INGEST_BUCKET", BUCKET)
         monkeypatch.setenv("INGEST_PREFIX", "raw/")
         settings.cache_clear()
@@ -137,9 +135,7 @@ def test_the_listing_pages_past_the_thousand_key_default(aws, db):
 
 
 def test_the_bucket_can_be_overridden_by_the_event(aws, db):
-    aws.create_bucket(
-        Bucket="other-raw", CreateBucketConfiguration={"LocationConstraint": REGION}
-    )
+    aws.create_bucket(Bucket="other-raw", CreateBucketConfiguration={"LocationConstraint": REGION})
     aws.put_object(Bucket="other-raw", Key="raw/x.ndjson", Body=ndjson("e-1"))
 
     result = reconcile.handler({"bucket": "other-raw"})

@@ -107,9 +107,7 @@ def handler(event: dict, context: object = None) -> dict:
                     }
                 },
             )
-            sqs.delete_message(
-                QueueUrl=config.dlq_url, ReceiptHandle=message["ReceiptHandle"]
-            )
+            sqs.delete_message(QueueUrl=config.dlq_url, ReceiptHandle=message["ReceiptHandle"])
             replayed += 1
 
     batch.count("messages_inspected", inspected)

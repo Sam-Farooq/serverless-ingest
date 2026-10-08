@@ -139,9 +139,7 @@ def load_object(
                     ),
                 )
 
-            cur.execute(
-                FINALISE_OBJECT, (loaded, len(rejections), ref.bucket, ref.key, ref.etag)
-            )
+            cur.execute(FINALISE_OBJECT, (loaded, len(rejections), ref.bucket, ref.key, ref.etag))
     except Exception:
         conn.rollback()
         raise

@@ -191,6 +191,7 @@ python3.11 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
 .venv/bin/python -m pytest -q
 .venv/bin/ruff check src tests
+.venv/bin/ruff format --check src tests
 ```
 
 No AWS account, no network, no Docker. moto stubs S3 and SQS. The Postgres

@@ -21,6 +21,10 @@ jobs:
 
       - run: ruff check src tests
 
+      # Here because the formatter and the code had drifted: five files were
+      # wrapped at 88 columns while pyproject sets 100.
+      - run: ruff format --check src tests
+
       # No AWS account, no network, no Docker. moto stubs S3 and SQS, and the
       # Postgres statements run against sqlite through tests/pgshim.py. If any
       # of this ever needs credentials, the job fails rather than skipping.
