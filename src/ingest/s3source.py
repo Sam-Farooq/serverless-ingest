@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from typing import Any
+from urllib.parse import unquote_plus
 
 from botocore.exceptions import ClientError
 
@@ -20,6 +21,21 @@ TEST_EVENT = "s3:TestEvent"
 # Codes where the object is not coming back. Everything else, including
 # SlowDown, InternalError and a plain timeout, is worth another delivery.
 PERMANENT_S3_CODES = frozenset({"NoSuchKey", "NoSuchBucket", "AccessDenied", "404"})
+
+
+def decode_key(encoded: str) -> str:
+    """Undo the encoding the notification service applies to an object key.
+
+    S3 sends the key URL-encoded with spaces as ``+``. GetObject expects the
+    real key. The two agree for every key made of letters, digits, dashes and
+    slashes, which is why this is easy to miss and stays missed until somebody
+    uploads a file with a space in the name.
+
+    Getting it wrong fails in the worst available way: GetObject answers
+    NoSuchKey, NoSuchKey is classified permanent, and the object is discarded
+    without a retry.
+    """
+    return unquote_plus(encoded)
 
 
 def normalize_etag(etag: str) -> str:
@@ -60,7 +76,7 @@ def object_refs(record: dict[str, Any]) -> list[ObjectRef]:
         refs.append(
             ObjectRef(
                 bucket=section["bucket"]["name"],
-                key=section["object"]["key"],
+                key=decode_key(section["object"]["key"]),
                 etag=normalize_etag(section["object"].get("eTag", "")),
             )
         )

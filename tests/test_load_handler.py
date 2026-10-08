@@ -127,3 +127,41 @@ def test_the_etag_is_stored_unquoted_whichever_api_it_came_from(aws, db):
 
 def test_an_empty_event_returns_an_empty_failure_list(db):
     assert load.handler({"Records": []}) == {"batchItemFailures": []}
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "raw/2026-03-01 batch 1.ndjson",
+        "raw/device=a+b/readings.ndjson",
+        "raw/réadings.ndjson",
+        "raw/100%/batch.ndjson",
+    ],
+)
+def test_a_key_needing_url_encoding_still_resolves(aws, db, key):
+    """S3 encodes the key in the notification. GetObject wants it decoded.
+
+    A space arrives as ``+`` and a literal ``+`` arrives as ``%2B``, so
+    passing the event's key straight to GetObject looks fine in testing with
+    tidy keys and returns NoSuchKey the first time a real one has a space in
+    it. Worse, NoSuchKey is classified permanent, so the object is discarded
+    and nothing retries.
+    """
+    etag = put(aws, key, ndjson("e-1"))
+
+    result = load.handler(sqs_event(object_message(BUCKET, key, etag)))
+
+    assert result == {"batchItemFailures": []}
+    assert db.query("SELECT object_key FROM ingest_objects") == [(key,)]
+
+
+def test_decode_key_and_normalize_etag_are_inverses_of_what_s3_sends():
+    from ingest.s3source import decode_key, normalize_etag
+
+    assert decode_key("raw/a+b.ndjson") == "raw/a b.ndjson"
+    assert decode_key("raw/a%2Bb.ndjson") == "raw/a+b.ndjson"
+    assert decode_key("raw/plain.ndjson") == "raw/plain.ndjson"
+    md5 = "d41d8cd98f00b204e9800998ecf8427e"
+    assert normalize_etag(f'"{md5}"') == md5
+    # A multipart etag is not an MD5 and is left exactly as it arrived.
+    assert normalize_etag(f"{md5}-3") == f"{md5}-3"
