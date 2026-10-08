@@ -1,0 +1,11 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
+#
+# database_url is here so that plan runs. For anything real it belongs in
+# Secrets Manager, read at apply time rather than typed into a file that
+# somebody will eventually commit.
+
+region             = "eu-west-1"
+name_prefix        = "ingest"
+subnet_ids         = ["subnet-REPLACE_ME", "subnet-REPLACE_ME"]
+security_group_ids = ["sg-REPLACE_ME"]
+database_url       = "postgresql://ingest@REPLACE_ME.eu-west-1.rds.amazonaws.com:5432/ingest"
