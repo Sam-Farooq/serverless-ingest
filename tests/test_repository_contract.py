@@ -1,6 +1,28 @@
+"""One set of tests, run against the sqlite shim and against a real Postgres.
+
+`tests/pgshim.py` is what every other test in this repository loads through,
+so everything the ledger is known to do is known through sqlite. These are
+the tests that say the shim is a faithful stand-in rather than a convenient
+one: each runs twice, once against `pgshim` and once against Postgres 16, and
+both have to agree.
+
+The live half is marked `live` and deselected unless asked for, so the
+default run stays offline and needs no Docker:
+
+    pytest                  the shim only, no server
+    pytest -m live          Postgres, needs INGEST_TEST_DSN
+    pytest -m ""            both
+
+What deliberately is **not** here is the three things the two backends
+legitimately differ on, because sqlite has no NUMERIC, no timezone type and
+no row level locking. Those live in tests/test_postgres_live.py, where the
+answer is Postgres's alone.
+"""
+
 import json
 from datetime import UTC, datetime
 
+import live_postgres as live
 import pytest
 
 from ingest.records import parse_ndjson
@@ -73,11 +95,37 @@ class _FailingCursor:
         return self._cursor.fetchall()
 
 
-@pytest.fixture
-def conn():
-    connection = connect()
-    yield connection
-    connection.close()
+class ShimBackend:
+    name = "shim"
+
+    def setup(self):
+        self.conn = connect()
+        return self
+
+    def teardown(self):
+        self.conn.close()
+
+
+class LiveBackend:
+    name = "live"
+
+    def setup(self):
+        live.psycopg()
+        self.schema = live.Schema()
+        self.schema.create()
+        self.conn = self.schema.connect()
+        return self
+
+    def teardown(self):
+        self.conn.close()
+        self.schema.drop()
+
+
+@pytest.fixture(params=[ShimBackend, pytest.param(LiveBackend, marks=pytest.mark.live)])
+def conn(request):
+    backend = request.param().setup()
+    yield backend.conn
+    backend.teardown()
 
 
 def test_a_load_writes_rows_and_one_ledger_row(conn):
@@ -155,6 +203,7 @@ def test_the_connection_dropping_midway_leaves_no_ledger_row_and_no_data(conn):
     reconcile days later.
     """
     parsed = parse_ndjson(body("e-1", "e-2"))
+    commits_before, rollbacks_before = conn.commits, conn.rollbacks
     # Claim, first reading, then the socket goes away.
     failing = FailAfter(conn, executes=2)
 
@@ -163,8 +212,12 @@ def test_the_connection_dropping_midway_leaves_no_ledger_row_and_no_data(conn):
 
     assert conn.query("SELECT count(*) FROM ingest_objects")[0][0] == 0
     assert conn.query("SELECT count(*) FROM readings")[0][0] == 0
-    assert conn.rollbacks == 1
-    assert conn.commits == 1  # the one from schema setup, not from the load
+    assert conn.rollbacks == rollbacks_before + 1
+    # Counted against a baseline rather than against 1, because the shim
+    # commits once applying its schema and the live backend applies the DDL
+    # on a different connection. The claim is the same either way: the load
+    # committed nothing.
+    assert conn.commits == commits_before
 
 
 def test_loaded_object_versions_returns_key_and_etag_pairs(conn):

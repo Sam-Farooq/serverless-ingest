@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "serverless-ingest"
-version = "0.7.4"
+version = "0.8.0"
 description = "S3 to SQS to Lambda to RDS Postgres, with partial batch failure and idempotent loads"
 requires-python = ">=3.11"
 dependencies = [
@@ -34,3 +34,12 @@ select = ["E", "F", "I", "B", "UP", "SIM"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# live_postgres.py is wiring for the live tier, imported by name rather than
+# as part of the tests package, the same way pgshim is reached as tests.pgshim.
+pythonpath = ["tests"]
+# The live tier is off unless asked for, so `pytest` needs no server and no
+# Docker. `pytest -m live` runs it, `pytest -m ""` runs both.
+addopts = "--strict-markers -m 'not live'"
+markers = [
+    "live: needs a real Postgres, from INGEST_TEST_DSN. Skips when it is unset.",
+]
