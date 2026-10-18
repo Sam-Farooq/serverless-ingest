@@ -10,6 +10,13 @@ NUMERIC precision, timezone handling, row-level locking, or the speculative
 insertion lock that makes the ledger claim a mutex under real concurrency.
 Those are Postgres behaviour and this harness says nothing about them.
 
+Since 0.8.0 that is no longer the end of the sentence. The statements here
+are also run against a real Postgres by
+``tests/test_repository_contract.py``, and the four behaviours above are
+asserted against one in ``tests/test_postgres_live.py``. The three
+translations below are each a question this shim answers differently, so each
+has a test over there holding Postgres's answer.
+
 The translation is three rules, listed in TRANSLATIONS below. If a fourth one
 is ever needed, test_schema_translation.py is the thing that will say so.
 """

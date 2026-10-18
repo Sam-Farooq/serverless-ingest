@@ -163,6 +163,51 @@ nothing.
 the function's own metrics would sit in `INSUFFICIENT_DATA` on a fresh
 install, so every alarm sets `treat_missing_data = "notBreaching"`.
 
+## What the alarms can and cannot see
+
+Metrics are embedded metric format log lines, so the functions make no
+`PutMetricData` call and the role carries no `cloudwatch:PutMetricData`. The
+cost of that is a floor on detection time, and it is worth stating as a number
+rather than leaving it as an implication.
+
+**An EMF metric does not exist until its log line has been delivered to
+CloudWatch Logs and parsed.** No alarm in the `ServerlessIngest` namespace can
+fire faster than that, whatever period it is given. In practice that is
+seconds, but it is not bounded by anything in this repository: it depends on
+the log group, the account's ingestion, and whether the subscription that
+produces the metric exists at all. A log group with no subscription produces
+no metric and every alarm below stays in `INSUFFICIENT_DATA`.
+
+So the alarms are split deliberately:
+
+| Alarm | Namespace | Period | Floor |
+|---|---|---|---|
+| `dlq-not-empty` | AWS/SQS | 300s | SQS's own 5 minute resolution |
+| `oldest-message-age` | AWS/SQS | 300s | same |
+| `rows-rejected` | ServerlessIngest | 900s | log ingestion |
+| `objects-skipped-often` | ServerlessIngest | 3600s | log ingestion |
+| `unreconciled-objects` | ServerlessIngest | 86400s | log ingestion |
+| `ingest-silent` | ServerlessIngest | `var.quiet_period_seconds` | log ingestion |
+
+**The dead letter queue is watched on AWS/SQS and not on an EMF metric,
+because it is the failure most likely to need a fast answer** and SQS
+publishes it without this code being involved at all. That is the one place
+the floor is avoided rather than accepted.
+
+**The failure with no bad value to alarm on** is a queue policy that stopped
+accepting `s3.amazonaws.com`. Objects keep landing, no notification is ever
+accepted, no invocation happens, and every alarm above stays in `OK` because
+the metric it watches is never published. The reconcile job finds it, up to a
+day later. `ingest-silent` finds it sooner, by alarming on the *absence* of
+`messages_received` with `treat_missing_data = "breaching"`, which is the
+opposite of every other alarm here.
+
+Its period is `var.quiet_period_seconds` and the default, three hours, is a
+placeholder chosen to look like one. The real value has two bounds that come
+from outside this repository: longer than the longest legitimately quiet gap
+between producer batches, shorter than how long the business will tolerate
+silently not ingesting. Nobody can pick it from the code.
+
 ## What it does not do
 
 **It does not re-enqueue a gap it finds.** `reconcile` reports and stops. The
@@ -204,6 +249,51 @@ precision, timezone handling, or the speculative insertion lock that makes the
 ledger claim a mutex under real concurrency. What it does check is that the
 statements in `ingest/repository.py` are the ones the tests execute, so a
 wrong column name fails a test rather than a deployment.
+
+### The live tier, and the three answers only Postgres has
+
+[`tests/test_repository_contract.py`](tests/test_repository_contract.py) runs
+one set of tests against the shim and against a real Postgres 16, and both
+have to agree. Marked `live`, deselected by default, so the command above
+still needs no server:
+
+```bash
+INGEST_TEST_DSN=postgresql://postgres:ingest-local@localhost:55432/ingest_contract \
+  .venv/bin/python -m pytest -m live -q
+```
+
+Each live test creates its own uuid-named schema, applies
+`sql/001_schema.sql` **verbatim with no translation**, and drops the schema
+after. Running the untranslated DDL is half the point: a type the shim
+rewrites is a type nothing had ever checked.
+
+The contract agreed on its first run, which is worth saying plainly: unlike a
+hand-written fake, the shim executes the real statements, so there was no
+convenient-stand-in problem to find. The divergences are confined to the
+three types it rewrites, and those are in
+[`tests/test_postgres_live.py`](tests/test_postgres_live.py), where the shim's
+answer is not a worse version of Postgres's but an answer to a different
+question:
+
+- **NUMERIC is decimal.** Two readings of `800.1` and `800.2` sum to exactly
+  `1600.3000`. sqlite stores both as REAL and answers
+  `1600.3000000000002`, an error that surfaces in a daily total and never in
+  a row. Separately, a producer sending `1013.25015`, which is inside
+  `pressure_hpa`'s valid range, is rounded by the server to `1013.2502`; the
+  shim keeps all five places, so a test written there would assert the value
+  came back unchanged.
+- **TIMESTAMPTZ is an instant.** A reading sent as `14:00+05:00` sorts before
+  one sent as `10:00Z`, because it is an hour earlier. Against the shim's
+  TEXT column the string comparison puts them the other way round, which is
+  the `watermark` comparison being checked against naive strings.
+- **`ON CONFLICT` takes a lock.** Two loaders race on one object. The second
+  `INSERT ... ON CONFLICT DO NOTHING` **blocks** on the first's speculative
+  insertion lock, and is asserted to still be blocked 0.4s later; when the
+  first commits it reports 0 rows, and when the first rolls back it gets the
+  claim instead. That second case is what makes a redelivery after a crash do
+  the work rather than believe it was already done. sqlite has no row level
+  locking, so both loaders would have returned immediately and loaded the
+  object twice.
 
 The translation is derived from `sql/001_schema.sql` rather than copied from
 it, and `tests/test_schema_translation.py` compares every declared column

@@ -87,3 +87,29 @@ variable "reconcile_schedule" {
   default     = "cron(15 2 * * ? *)"
   description = "02:15 UTC daily, after the nightly upstream exports have landed."
 }
+
+# The period for the "nothing is arriving" alarm, and the one number in this
+# file that cannot be given a safe default.
+#
+# Every other alarm here fires on a value that is wrong. This one fires on the
+# absence of a value, so its period has to be longer than the longest gap
+# between producer batches that is legitimately quiet, and shorter than how
+# long the business is willing to be silently not ingesting. Those two numbers
+# come from the producer and from whoever owns the data, not from this
+# repository.
+#
+# Three hours is a placeholder chosen to be obviously a placeholder: long
+# enough not to page on a quiet night, short enough that a queue policy which
+# stopped accepting s3.amazonaws.com is caught the same working day.
+variable "quiet_period_seconds" {
+  description = "Seconds of no messages_received before the ingest-silent alarm fires"
+  type        = number
+  default     = 10800
+
+  validation {
+    # CloudWatch takes a period that is 1, 5, 10, 30, or a multiple of 60, and
+    # an alarm period cannot exceed one day.
+    condition     = var.quiet_period_seconds % 60 == 0 && var.quiet_period_seconds <= 86400
+    error_message = "quiet_period_seconds must be a multiple of 60 and no more than 86400."
+  }
+}

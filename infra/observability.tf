@@ -62,11 +62,23 @@ resource "aws_cloudwatch_metric_alarm" "ingest_backlog_age" {
   }
 }
 
-# The next three read metrics the functions publish themselves, in embedded
-# metric format. A metric that has never been published does not exist, so a
-# fresh deployment would leave these in INSUFFICIENT_DATA rather than OK.
+# The two alarms above read AWS/SQS, which SQS publishes itself at a fixed
+# five minute resolution. Everything below reads the ServerlessIngest
+# namespace, which the functions publish as embedded metric format log lines.
+#
+# That difference is the detection floor. An EMF metric does not exist until
+# the log line has been delivered and parsed, so no alarm below can fire
+# faster than log ingestion, whatever period it is given. The README states
+# the floor; the periods here are chosen on top of it rather than in ignorance
+# of it. The two SQS alarms are not subject to it, which is why the dead
+# letter queue, the failure most likely to need a fast answer, is watched
+# there and not here.
+#
+# A metric that has never been published does not exist, so a fresh deployment
+# would leave these in INSUFFICIENT_DATA rather than OK.
 # treat_missing_data = "notBreaching" is what keeps that from paging someone
-# on the day of the install.
+# on the day of the install. The one exception is the silence alarm at the
+# bottom, where missing data is the alarm.
 resource "aws_cloudwatch_metric_alarm" "rows_rejected" {
   alarm_name          = "${var.name_prefix}-rows-rejected"
   comparison_operator = "GreaterThanThreshold"
@@ -117,6 +129,42 @@ resource "aws_cloudwatch_metric_alarm" "objects_skipped" {
   metric_name         = "objects_skipped"
   statistic           = "Sum"
   treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    Handler = "load"
+  }
+}
+
+# The one alarm here that fires on an absence rather than a value.
+#
+# The failure this exists for is a queue policy that stopped accepting
+# s3.amazonaws.com. Nothing breaks loudly: objects keep landing in the bucket,
+# no notification is ever accepted, no invocation happens, and every alarm
+# above stays in OK because the metric they watch is simply never published.
+# The reconcile job would find it, up to a day later. This finds it inside
+# var.quiet_period_seconds.
+#
+# treat_missing_data = "breaching" is the whole point and is the opposite of
+# every other alarm in this file. The period is a variable because it is a
+# property of the producer's schedule and not of this code; see the comment on
+# quiet_period_seconds for what the two bounds on it are.
+resource "aws_cloudwatch_metric_alarm" "ingest_silent" {
+  alarm_name          = "${var.name_prefix}-ingest-silent"
+  comparison_operator = "LessThanOrEqualToThreshold"
+  threshold           = 0
+  evaluation_periods  = 1
+  period              = var.quiet_period_seconds
+  namespace           = "ServerlessIngest"
+  metric_name         = "messages_received"
+  statistic           = "Sum"
+  treat_missing_data  = "breaching"
+
+  alarm_description = join(" ", [
+    "No SQS messages reached the load handler for",
+    "${var.quiet_period_seconds}s.",
+    "Check the queue policy still accepts s3.amazonaws.com, then the bucket",
+    "notification configuration, before looking at the function."
+  ])
 
   dimensions = {
     Handler = "load"
